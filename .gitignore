@@ -1,0 +1,9 @@
+.dropbox
+maxi_OLD/*
+out_xcor/*
+.DS_Store
+.idea/*
+.ipynb_checkpoints/*
+__pycache__/*
+*.pyc
+final_plots/*
