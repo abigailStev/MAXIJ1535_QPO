@@ -1,4 +1,4 @@
-# MAXIJ1535_B-QPO
+# MAXIJ1535_QPO
 
 Analysis software and processed data products for Stevens et al. 2018, "NICER
 Spectral-Timing Studies of a Low-Frequency QPO in the Soft-Intermediate State of
