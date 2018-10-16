@@ -7,3 +7,12 @@ out_xcor/*
 __pycache__/*
 *.pyc
 final_plots/*
+*.eps
+*.pdf
+*.png
+nicer-lfqpo_arxiv/*
+*.rsp
+*.pha
+*.xcm
+*.log
+out/old/*
