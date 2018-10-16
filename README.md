@@ -37,6 +37,13 @@ vary based on your local data directory structure) and the processed data
 products are in the `out/` directory. Public NICER data can be downloaded from
 [HEASARC][heasarcsite].
 
+`get_total_counts.ipynb` will compute the total number of photon counts for a
+set of observations (going off the length of the event list in the FITS header).
+`nicer_v1.02rbn.rsp` is the NICER response matrix binned up to the energy
+resolution used for the lag-energy spectrum (the same as in `in/chbinfile.txt`
+and `in/chan_group.txt`).
+`xcor_tools.py` has helper methods used in the analysis steps.
+
 ## Copyright
 
 Copyright (c) 2017-2018 Abigail L. Stevens
