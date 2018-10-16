@@ -17,7 +17,7 @@ import scipy.fftpack as fftpack
 from datetime import datetime
 import os
 import gc
-from xcor_tools import make_1Dlightcurve, find_nearest
+from xcor_tools import make_1Dlightcurve, find_nearest, make_binned_lc
 import warnings
 from astropy.utils.exceptions import AstropyWarning
 import matplotlib.pyplot as plt
@@ -73,28 +73,30 @@ if __name__ == "__main__":
     ##########
 
     homedir = os.path.expanduser("~")
-    maxi_dir = homedir + "/Dropbox/Research/MAXIJ1535_B-QPO"
-    data_dir = homedir + "/Reduced_data/MAXIJ1535_event_cl"
+    exe_dir = homedir + "/Dropbox/Research/MAXIJ1535_B-QPO"
+    data_dir = homedir + "/Reduced_data/MAXI_J1535-571"
     n_seconds = int(64)  # length of light curve segment, in seconds
     dt = 1./256.  # length of time bin, in seconds
     # debug = True
     debug = False
 
-    input_file = maxi_dir + "/all_evtlists.txt"
-    # input_file = maxi_dir + "/bqpo_evtlists.txt"
+    # input_file = exe_dir + "/all_evtlists.txt"
+    input_file = exe_dir + "/in/rise_evtlists.txt"
 
-    out_file = maxi_dir + "/out/MAXIJ1535_seg-info.dat"
+    out_file = exe_dir + "/out/MAXIJ1535_seg-info.dat"
 
-    rsp_matrix_file = maxi_dir + "/nicer_v1.02rbn.rsp"
+    rsp_matrix_file = exe_dir + "/nicer_v1.02rbn.rsp"
     # rsp_hdu = fits.open(rsp_matrix_file)
     # detchans = np.int(rsp_hdu['EBOUNDS'].header['DETCHANS'])
 
     print("\tDebugging? %s!" % str(debug))
 
-    ## Using a list of segment start and stop times to avoid big gaps.
-    ## Got this list from Phil.
-    # seg_select_list = maxi_dir + "/selected_seg_start_times.txt"
-    # seg_start_times = np.loadtxt(seg_select_list)
+    ## For making a light curve of each detector (done to check for flaring,
+    ## though this check is not yet automatically implemented!!)
+    detid_bin_file = exe_dir + "/in/detectors.txt"
+    ## Could otherwise use n_chans = detchans FITS keyword in rsp matrix, and
+    ## chan_bins=np.arange(detchans+1)  (need +1 for how histogram does ends)
+    detID_bins = np.loadtxt(detid_bin_file, dtype=np.int)
 
     #################
     ## And it begins
@@ -160,7 +162,7 @@ if __name__ == "__main__":
     ## Looping through the data files to read the light curves
     for in_file in data_files:
         if in_file[0] == '.':
-            in_file = maxi_dir + in_file[1:]
+            in_file = exe_dir + in_file[1:]
         elif in_file[0] == 'n':
             in_file = data_dir + "/" + in_file
         print("\nInput file: "+in_file)
@@ -203,6 +205,7 @@ if __name__ == "__main__":
                           (det != 22) & (det != 34) & (det != 60)
             time = time[badFPM_mask]
             energy = energy[badFPM_mask]
+            det = det[badFPM_mask]
             pi_ratio = pi_ratio[badFPM_mask]
 
             for (start_gti, stop_gti) in zip(gti_starttimes, gti_stoptimes):
@@ -218,6 +221,7 @@ if __name__ == "__main__":
                 dont_want = time < start_time
                 time = time[~dont_want]
                 energy = energy[~dont_want]
+                det = det[~dont_want]
                 pi_ratio = pi_ratio[~dont_want]
 
                 ############################
@@ -237,6 +241,7 @@ if __name__ == "__main__":
                     seg_mask = time < end_time
                     time_seg = time[seg_mask]
                     energy_seg = energy[seg_mask]
+                    det_seg = det[seg_mask]
                     pi_ratio_seg = pi_ratio[seg_mask]
 
                     ## For all MPUs, broad 3-10 keV
@@ -272,7 +277,7 @@ if __name__ == "__main__":
                     ## Keep the stuff that isn't in this segment for next time
                     time = time[~seg_mask]
                     energy = energy[~seg_mask]
-                    # det = det[~seg_mask]
+                    det = det[~seg_mask]
                     pi_ratio = pi_ratio[~seg_mask]
 
                     ## 'Populating' all the discrete events into a continuous
@@ -307,61 +312,88 @@ if __name__ == "__main__":
                     del lc_ibg
                     del lc_nz
 
-                    ## Compute hardness ratio
-                    if soft_rate != 0:
-                        hardness = hard_rate / soft_rate
+                    lc_det = make_binned_lc(np.asarray(time_seg),
+                                            np.asarray(det_seg), n_bins,
+                                            detID_bins, start_time, end_time)
+
+                    det_means = np.mean(lc_det, axis=0)
+                    # rounded_det_means = np.round(det_means, 1)
+                    ## Using 4*(iqr/2) as a cutoff
+                    det_median = np.percentile(det_means, 50)
+                    iqr = np.subtract(*np.percentile(det_means, [75, 25]))
+                    lower_det_bound = det_median - (iqr * 2)
+                    upper_det_bound = det_median + (iqr * 2)
+
+                    temp1 = np.where(det_means <= lower_det_bound)
+                    temp2 = np.where(det_means >= upper_det_bound)
+
+                    if np.sum(temp1) + np.sum(temp2) > 0:
+                        print("Throw out this segment! n_seg = %d" % n_seg)
+                        print("\tDet means: ", det_means)
+                        print("\tMean of means: ", np.mean(det_means))
+                        print("\tMedian of means: ", det_median)
+                        print("\tHalf of IQR: ", iqr)
+                        print("\tLower bound: ", lower_det_bound)
+                        print("\tBelow the lower bound: ", det_means[temp1])
+                        print("\tUpper bound: ", upper_det_bound)
+                        print("\tAbove the upper bound: ", det_means[temp2])
+                        del lc_det
                     else:
-                        hardness = -999.
+                        ## Compute hardness ratio
+                        if soft_rate != 0:
+                            hardness = hard_rate / soft_rate
+                        else:
+                            hardness = -999.
 
-                    psd_broad = PSD(lc_broad)
-                    # print(np.shape(psd_broad.psd))
-                    # print(np.shape(psd_broad.rate))
+                        psd_broad = PSD(lc_broad)
+                        # print(np.shape(psd_broad.psd))
+                        # print(np.shape(psd_broad.rate))
 
-                    ## Compute the integrated rms over 3-10 keV
-                    ## over 1.5-15 Hz. Compute Poisson noise level from >70 Hz.
-                    temp_psd = np.asarray(psd_broad.psd)
-                    # print(temp_psd[4:8])
-                    temp_fracpsd = temp_psd * 2 * dt / n_bins / (psd_broad.rate ** 2)
-                    # print(temp_fracpsd[4:8])
+                        ## Compute the integrated rms over 3-10 keV
+                        ## over 1.5-15 Hz. Compute Poisson noise level from >70 Hz.
+                        temp_psd = np.asarray(psd_broad.psd)
+                        # print(temp_psd[4:8])
+                        temp_fracpsd = temp_psd * 2 * dt / n_bins / (psd_broad.rate ** 2)
+                        # print(temp_fracpsd[4:8])
 
-                    # temp_tab = Table()
-                    # temp_tab['FREQUENCY'] = freq
-                    # temp_tab['PSD_ALL'] = psd_broad.psd
-                    # temp_tab.meta['RATE_ALL'] = psd_broad.rate
-                    # temp_tab.meta['N_BINS'] = n_bins
-                    # temp_tab.meta['N_SEG'] = 1
-                    # temp_tab.write("./out/temp_psd.fits", format='fits',
-                    #                overwrite=True)
-                    # # np.savetxt("./out/freq.txt", freq[0:int(n_bins/2)])
-                    # # np.savetxt("./out/psd_seg.txt", psd_broad.psd[0:int(n_bins/2)])
-                    # exit()
+                        # temp_tab = Table()
+                        # temp_tab['FREQUENCY'] = freq
+                        # temp_tab['PSD_ALL'] = psd_broad.psd
+                        # temp_tab.meta['RATE_ALL'] = psd_broad.rate
+                        # temp_tab.meta['N_BINS'] = n_bins
+                        # temp_tab.meta['N_SEG'] = 1
+                        # temp_tab.write("./out/temp_psd.fits", format='fits',
+                        #                overwrite=True)
+                        # # np.savetxt("./out/freq.txt", freq[0:int(n_bins/2)])
+                        # # np.savetxt("./out/psd_seg.txt", psd_broad.psd[0:int(n_bins/2)])
+                        # exit()
 
-                    noise_level = np.mean(temp_fracpsd[hf:int(n_bins/2)])
-                    # print(noise_level)
-                    # print("%.3g  %.3g" % (noise_level, 2./psd_broad.rate))
-                    temp_fracpsd -= noise_level
-                    var = np.sum(temp_fracpsd[lf:uf] * df)
-                    if var >= 0:
-                        rms = np.sqrt(var)
-                    else:
-                        rms = 99
-                    # print(rms)
-                    ## Saving
-                    file_obsID.append(obsID)
-                    file_start_time.append(start_time)
-                    file_end_time.append(end_time)
-                    file_seg_rate.append(seg_rate)
-                    file_broad_rate.append(psd_broad.rate)
-                    file_rms.append(rms)
-                    file_hard_rate.append(hard_rate)
-                    file_soft_rate.append(soft_rate)
-                    file_hardness.append(hardness)
-                    file_nz_rate.append(nz_rate)
-                    file_ibg_rate.append(ibg_rate)
-                    file_hrej_rate.append(hrej_rate)
+                        noise_level = np.mean(temp_fracpsd[hf:int(n_bins/2)])
+                        # print(noise_level)
+                        # print("%.3g  %.3g" % (noise_level, 2./psd_broad.rate))
+                        temp_fracpsd -= noise_level
+                        var = np.sum(temp_fracpsd[lf:uf] * df)
+                        if var >= 0:
+                            rms = np.sqrt(var)
+                        else:
+                            rms = 99
+                        # print(rms)
+                        ## Saving
+                        file_obsID.append(obsID)
+                        file_start_time.append(start_time)
+                        file_end_time.append(end_time)
+                        file_seg_rate.append(seg_rate)
+                        file_broad_rate.append(psd_broad.rate)
+                        file_rms.append(rms)
+                        file_hard_rate.append(hard_rate)
+                        file_soft_rate.append(soft_rate)
+                        file_hardness.append(hardness)
+                        file_nz_rate.append(nz_rate)
+                        file_ibg_rate.append(ibg_rate)
+                        file_hrej_rate.append(hrej_rate)
 
-                    del lc_broad
-                    del psd_broad
+                        del lc_broad
+                        del psd_broad
 
                     n_seg += 1
                     ## Increment for next segment
@@ -419,3 +451,5 @@ if __name__ == "__main__":
     ## Saving the output!
     ######################
 print("\nDone!\n")
+
+os.system('\a')

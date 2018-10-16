@@ -30,44 +30,44 @@ __year__ = "2018"
 
 class QPO(object):
     """
-    Generic QPO class for energy-resolved CCF. Used for each segment.
+    Generic QPO class for power and cross spectra. Used for each segment.
     """
-    def __init__(self, ref_lc, ci_lc, all_lc):
+    def __init__(self, ref_lc, ci_lc, broad_lc):
 
         assert np.shape(ref_lc)[0] == np.shape(ci_lc)[0]
 
         ## Computing Fourier transform
         fft_ref, self.rate_ref = self._fft(ref_lc)
-        fft_all, self.rate_all = self._fft(all_lc)
+        fft_broad, self.rate_broad = self._fft(broad_lc)
         fft_ci, self.rate_ci = self._fft(ci_lc)
 
         ## Computing PSDs
         self.psd_ref = self._power(fft_ref).real
-        self.psd_all = self._power(fft_all).real
+        self.psd_broad = self._power(fft_broad).real
         self.psd_ci = self._power(fft_ci).real
         self.cs = self._cross(fft_ci, fft_ref)
 
         ## Check values
-        assert np.isfinite(self.psd_ref).all(), "psd_ref has infinite value(s)."
-        assert not np.isnan(self.psd_ref).all(), "psd_ref has NaN value(s)."
-        assert np.isfinite(self.psd_all).all(), "psd_all has infinite value(s)."
-        assert not np.isnan(self.psd_all).all(), "psd_all has NaN value(s)."
-        assert np.isfinite(self.psd_ci).all(), "psd_ci has infinite value(s)."
-        assert not np.isnan(self.psd_ci).all(), "psd_ci has NaN value(s)."
-        assert np.isfinite(self.cs).all(), "cs has infinite value(s)."
-        assert not np.isnan(self.cs).all(), "cs has NaN value(s)."
+        assert np.isfinite(self.psd_ref).any(), "psd_ref has infinite value(s)."
+        assert not np.isnan(self.psd_ref).any(), "psd_ref has NaN value(s)."
+        assert np.isfinite(self.psd_broad).any(), "psd_broad has infinite value(s)."
+        assert not np.isnan(self.psd_broad).any(), "psd_broad has NaN value(s)."
+        assert np.isfinite(self.psd_ci).any(), "psd_ci has infinite value(s)."
+        assert not np.isnan(self.psd_ci).any(), "psd_ci has NaN value(s)."
+        assert np.isfinite(self.cs).any(), "cs has infinite value(s)."
+        assert not np.isnan(self.cs).any(), "cs has NaN value(s)."
 
         assert np.isfinite(self.rate_ref), \
             "rate_ref has infinite value(s)."
         assert not np.isnan(self.rate_ref), \
             "rate_ref has NaN value(s)."
-        assert np.isfinite(self.rate_all), \
-            "rate_all has infinite value(s)."
-        assert not np.isnan(self.rate_all), \
-            "rate_all has NaN value(s)."
-        assert np.isfinite(self.rate_ci).all(), \
+        assert np.isfinite(self.rate_broad), \
+            "rate_broad has infinite value(s)."
+        assert not np.isnan(self.rate_broad), \
+            "rate_broad has NaN value(s)."
+        assert np.isfinite(self.rate_ci).any(), \
             "rate_ci has infinite value(s)."
-        assert not np.isnan(self.rate_ci).all(), \
+        assert not np.isnan(self.rate_ci).any(), \
             "rate_ci has NaN value(s)."
 
     def _fft(self, lc):
@@ -115,30 +115,34 @@ if __name__ == "__main__":
     ##########
 
     homedir = os.path.expanduser("~")
-    maxi_dir = homedir + "/Dropbox/Research/MAXIJ1535_B-QPO"
-    data_dir = homedir + "/Reduced_data/MAXIJ1535_event_cl"
+    exe_dir = homedir + "/Dropbox/Research/MAXIJ1535_B-QPO"
+    data_dir = homedir + "/Reduced_data/MAXI_J1535-571"
 
     n_seconds = int(64)  # length of light curve segment, in seconds
     dt = 1./256.  # length of time bin, in seconds
     # debug = True
     debug = False
 
-    # input_file = maxi_dir + "/all_evtlists.txt"
-    # input_file = maxi_dir + "/bqpo_evtlists.txt"
-    input_file = maxi_dir + "/hard_evtlists.txt"
+    # input_file = exe_dir + "/in/all_evtlists.txt"
+    # input_file = exe_dir + "/in/bqpo_evtlists.txt"
+    input_file = exe_dir + "/in/bqpo_ratecut_evtlists.txt"
+    # input_file = exe_dir + "/in/hard_evtlists.txt"
+    # input_file = exe_dir + "/in/window1_evtlists.txt"
 
 
     file_type = "Segments selected on rms and hr"
-    out_file = maxi_dir + "/out/MAXIJ1535_%dsec_%ddt_HARDER_cs.fits" % (n_seconds, int(1/dt))
+    out_file = exe_dir + "/out/MAXIJ1535_%dsec_%ddt_ratecut_5-10_cs.fits" % (n_seconds, int(1/dt))
+    # out_file = exe_dir + "/out/MAXIJ1535_%dsec_%ddt_window1_cs.fits" % (n_seconds, int(1/dt))
+    # out_file = exe_dir + "/out/MAXIJ1535_%dsec_%ddt_hard_cs.fits" % (n_seconds, int(1/dt))
 
-    rsp_matrix_file = maxi_dir + "/nicer_v1.02rbn.rsp"
+    rsp_matrix_file = exe_dir + "/nicer_v1.02rbn.rsp"
     # rsp_hdu = fits.open(rsp_matrix_file)
     # detchans = np.int(rsp_hdu['EBOUNDS'].header['DETCHANS'])
 
     print("\tDebugging? %s!" % str(debug))
 
     ## We're binning up the PI info into 62 energy channels
-    binning_file = maxi_dir + "/chbinfile.txt"
+    binning_file = exe_dir + "/in/chbinfile.txt"
     binning = np.loadtxt(binning_file, dtype=np.int)
     # if debug:
     #     print("Binning from file: %s" % str(binning))
@@ -151,17 +155,15 @@ if __name__ == "__main__":
     chan_bins = np.append(chan_bins, c + binning[-2, 2])  ## End of the last bin
     n_chans = len(chan_bins)-1
 
-    ## For making a light curve of each detector (done to check for flaring,
-    ## though this check is not yet automatically implemented!!)
-    # detid_bin_file = maxi_dir +"/detectors.txt"
-    # detid_bin_file = maxi_dir +"/detectors_no1434.txt"
+    ## For making a light curve of each detector (done to check for flares)
+    detid_bin_file = exe_dir +"/in/detectors.txt"
     ## Could otherwise use n_chans = detchans FITS keyword in rsp matrix, and
     ## chan_bins=np.arange(detchans+1)  (need +1 for how histogram does ends)
-    # detID_bins = np.loadtxt(detid_bin_file, dtype=np.int)
+    detID_bins = np.loadtxt(detid_bin_file, dtype=np.int)
 
     ## Using a list of segment start and stop times to avoid big gaps.
     ## Got this list from Phil.
-    # seg_select_list = maxi_dir + "/selected_seg_start_times.txt"
+    # seg_select_list = exe_dir + "/in/selected_seg_start_times.txt"
     # seg_start_times = np.loadtxt(seg_select_list)
 
     #################
@@ -177,10 +179,7 @@ if __name__ == "__main__":
     ## Frequency bounds for computing the rms of the power spectrum:
     lf = int(find_nearest(freq[0:int(n_bins/2+1)], 1.5)[1])
     uf = int(find_nearest(freq[0:int(n_bins/2+1)], 15)[1])
-    hf = int(find_nearest(freq[0:int(n_bins/2+1)], 70)[1])
-    # print(lf)
-    # print(uf)
-    # print(hf)
+    hf = int(find_nearest(freq[0:int(n_bins/2+1)], 50)[1])
 
     print("List of event files: %s" % input_file)
     assert os.path.isfile(input_file)
@@ -208,18 +207,21 @@ if __name__ == "__main__":
     print("* Loop through segments")
     mean_rate_ref = 0
     psd_ref = np.zeros(n_bins, dtype='float64')
-    mean_rate_all = 0
-    psd_all = np.zeros(n_bins, dtype='float64')
+    mean_rate_seg = 0
+    mean_rate_broad = 0
+    psd_broad = np.zeros(n_bins, dtype='float64')
     mean_rate_ci = np.zeros(n_chans, dtype='float32')
     psd_ci = np.zeros((n_bins, n_chans), dtype='float64')
     cross = np.zeros((n_bins, n_chans), dtype='complex64')
+    avg_deadtime = 0
+    ci_rates = np.zeros((n_chans, 1), dtype='float64')
+    allmpu_rates = np.zeros((n_chans, 1), dtype='float64')
 
-    # ci_rates = np.zeros((n_chans, 1), dtype='float64')
 
     ## Looping through the data files to read the light curves
     for in_file in data_files:
         if in_file[0] == '.':
-            in_file = maxi_dir + in_file[1:]
+            in_file = exe_dir + in_file[1:]
         elif in_file[0] == 'n':
             in_file = data_dir + "/" + in_file
         print("\nInput file: "+in_file)
@@ -229,6 +231,7 @@ if __name__ == "__main__":
             energy = fits_hdu['EVENTS'].data.field('PI')
             det = fits_hdu['EVENTS'].data.field('DET_ID')
             pi_ratio = fits_hdu['EVENTS'].data.field('PI_RATIO')
+            deadtime = fits_hdu['EVENTS'].data.field('DEADTIME')
             gti_starttimes = fits_hdu['GTI'].data.field('START')  ## ext 2
             gti_stoptimes = fits_hdu['GTI'].data.field('STOP')
             fits_hdu.close()
@@ -249,6 +252,7 @@ if __name__ == "__main__":
             energy = energy[badFPM_mask]
             det = det[badFPM_mask]
             pi_ratio = pi_ratio[badFPM_mask]
+            deadtime = deadtime[badFPM_mask]
 
             n_events = len(time)
             print("Time in file: %.2f" % (final_time - start_time))
@@ -273,6 +277,7 @@ if __name__ == "__main__":
                 energy = energy[~dont_want]
                 det = det[~dont_want]
                 pi_ratio = pi_ratio[~dont_want]
+                deadtime = deadtime[~dont_want]
 
                 ############################
                 ## Looping through segments
@@ -287,6 +292,7 @@ if __name__ == "__main__":
                     energy_seg = energy[seg_mask]
                     det_seg = det[seg_mask]
                     pi_ratio_seg = pi_ratio[seg_mask]
+                    deadtime_seg = deadtime[seg_mask]
 
                     ## MPUs 0-3 are CI
                     ## MPUs are marked by the 1st digit (0-6 incl) in the detector ID
@@ -302,8 +308,9 @@ if __name__ == "__main__":
                     time_ref = time_ref[ref_mask]
 
                     # ## For all MPUs, 3-10 keV
-                    allmpu_mask = (energy_seg >= 300) & (energy_seg <= 1000)
-                    time_all = time_seg[allmpu_mask]
+                    allmpu_mask = (energy_seg >= 500) & (energy_seg <= 1000)
+                    time_broad = time_seg[allmpu_mask]
+                    deadtime_broad = deadtime_seg[allmpu_mask]
 
                     ## Soft band is 1-2 keV (all MPUs)
                     soft_mask = (energy_seg >= 100) & (energy_seg <= 200)
@@ -313,120 +320,157 @@ if __name__ == "__main__":
                     hard_mask = (energy_seg >= 700) & (energy_seg <= 1000)
                     time_hard = time_seg[hard_mask]
 
-                    ## Noise level in 0-0.2 keV (CI MPUs)
-                    nz_mask = energy_ci <= 20
-                    time_nz = time_ci[nz_mask]
-
-                    ## Noise level in 15-17 keV (CI MPUs)
-                    ibg_mask = (energy_ci >= 1500) & (energy_ci <= 1700)
-                    time_ibg = time_ci[ibg_mask]
-
-                    ## Noise level in CI MPUs with certain PI ratio
-                    pi_ratio_ci = pi_ratio_seg[ci_mask]
-                    nanmask = np.isnan(pi_ratio_ci)
-                    pi_ratio_ci[nanmask] = 99.
-                    hrej_piratio_mask = pi_ratio_ci > 1.54
-                    time_hrej = time_ci[hrej_piratio_mask]
-                    energy_hrej = energy_ci[hrej_piratio_mask]
-                    ## In 3-18 keV
-                    hrej_energy_mask = (energy_hrej >= 300) & \
-                                       (energy_hrej <= 1800)
-                    time_hrej = time_hrej[hrej_energy_mask]
+                    # ## Noise level in 0-0.2 keV (CI MPUs)
+                    # nz_mask = energy_ci <= 20
+                    # time_nz = time_ci[nz_mask]
+                    #
+                    # ## Noise level in 15-17 keV (CI MPUs)
+                    # ibg_mask = (energy_ci >= 1500) & (energy_ci <= 1700)
+                    # time_ibg = time_ci[ibg_mask]
+                    #
+                    # ## Noise level in CI MPUs with certain PI ratio
+                    # pi_ratio_ci = pi_ratio_seg[ci_mask]
+                    # nanmask = np.isnan(pi_ratio_ci)
+                    # pi_ratio_ci[nanmask] = 99.
+                    # hrej_piratio_mask = pi_ratio_ci > 1.54
+                    # time_hrej = time_ci[hrej_piratio_mask]
+                    # energy_hrej = energy_ci[hrej_piratio_mask]
+                    # ## In 3-18 keV
+                    # hrej_energy_mask = (energy_hrej >= 300) & \
+                    #                    (energy_hrej <= 1800)
+                    # time_hrej = time_hrej[hrej_energy_mask]
 
                     ## Keep the stuff that isn't in this segment for next time
                     time = time[~seg_mask]
                     energy = energy[~seg_mask]
                     det = det[~seg_mask]
                     pi_ratio = pi_ratio[~seg_mask]
+                    deadtime = deadtime[~seg_mask]
 
-                    ## 'Populating' all the discrete events into continuous
-                    ## lightcurves
-                    lc_ci = make_binned_lc(np.asarray(time_ci),
-                                           np.asarray(energy_ci), n_bins,
-                                           chan_bins, start_time, end_time)
-                    lc_ref = make_1Dlightcurve(np.asarray(time_ref), n_bins,
-                                               start_time, end_time)
-                    lc_all = make_1Dlightcurve(np.asarray(time_all), n_bins,
-                                               start_time, end_time)
-                    lc_soft = make_1Dlightcurve(np.asarray(time_soft), n_bins,
-                                                start_time, end_time)
-                    lc_hard = make_1Dlightcurve(np.asarray(time_hard), n_bins,
-                                                start_time, end_time)
+                    ## Doing the FPM filtering thing
+                    lc_det = make_binned_lc(np.asarray(time_seg),
+                                            np.asarray(det_seg), n_bins,
+                                            detID_bins, start_time, end_time)
 
-                    ## Compute hardness ratio
-                    if np.mean(lc_soft) != 0:
-                        hardness = np.mean(lc_hard) / np.mean(lc_soft)
+                    det_means = np.mean(lc_det, axis=0)
+                    # # rounded_det_means = np.round(det_means, 1)
+                    # ## Using normal distribution 4-sigma cutoffs
+                    det_median = np.percentile(det_means, 50)
+                    iqr = np.subtract(*np.percentile(det_means, [75, 25]))
+                    lower_det_bound = det_median-(iqr*2)
+                    upper_det_bound = det_median+(iqr*2)
+
+                    temp1 = np.where(det_means <= lower_det_bound)
+                    temp2 = np.where(det_means >= upper_det_bound)
+
+                    if np.sum(temp1) + np.sum(temp2) > 0:
+                        print("Throw out this segment! n_seg = %d" % n_seg)
+                        print("\tDet means: ", det_means)
+                        print("\tMean of means: ", np.mean(det_means))
+                        print("\tMedian of means: ", det_median)
+                        print("\tIQR: ", iqr)
+                        print("\tLower bound: ", lower_det_bound)
+                        print("\tBelow the lower bound: ", det_means[temp1])
+                        print("\tUpper bound: ", upper_det_bound)
+                        print("\tAbove the upper bound: ", det_means[temp2])
+                        del lc_det
                     else:
-                        hardness = -999.
-                    del lc_soft
-                    del lc_hard
 
-                    ## Only keep going if the hardness ratio is in the right range
-                    # if (hardness >= 0.021 and hardness <= 0.031):
-                    if hardness > 0.031 and hardness <= 0.05:
-                        ## Computations
-                        qpo_seg = QPO(lc_ref, lc_ci, lc_all)
-                        del lc_ci
-                        del lc_ref
-                        del lc_all
+                        ## 'Populating' all the discrete events into continuous
+                        ## lightcurves
+                        lc_ci = make_binned_lc(np.asarray(time_ci),
+                                               np.asarray(energy_ci), n_bins,
+                                               chan_bins, start_time, end_time)
+                        lc_ref = make_1Dlightcurve(np.asarray(time_ref), n_bins,
+                                                   start_time, end_time)
+                        lc_broad = make_1Dlightcurve(np.asarray(time_broad), n_bins,
+                                                   start_time, end_time)
+                        lc_soft = make_1Dlightcurve(np.asarray(time_soft), n_bins,
+                                                    start_time, end_time)
+                        lc_hard = make_1Dlightcurve(np.asarray(time_hard), n_bins,
+                                                    start_time, end_time)
+                        lc_allmpu = make_binned_lc(np.asarray(time_seg),
+                                                   np.asarray(energy_seg), n_bins,
+                                                   chan_bins, start_time, end_time)
 
-                        ## Compute the integrated rms over 3-10 keV (ref band)
-                        ## over 1.5-15 Hz. Compute Poisson noise level from >70 Hz.
-                        temp_psd = np.asarray(qpo_seg.psd_all)
-                        # print(temp_psd[4:8])
-                        temp_fracrefpsd = temp_psd * 2 * dt / n_bins / \
-                                          (qpo_seg.rate_all ** 2)
-                        # print(temp_fracrefpsd[4:8])
-                        noise_level = np.mean(temp_fracrefpsd[hf:int(n_bins/2)])
-                        # print("%.3g  %.3g" % (noise_level, 2./qpo_seg.rate_all))
-                        temp_fracrefpsd -= noise_level
-                        var = np.sum(temp_fracrefpsd[lf:uf]*df)
-                        if var >= 0:
-                            rms = np.sqrt(var)
+                        ## Compute hardness ratio
+                        if np.mean(lc_soft) != 0:
+                            hardness = np.mean(lc_hard) / np.mean(lc_soft)
                         else:
-                            rms = 99.
-                        # print(rms)
+                            hardness = -999.
+                        del lc_soft
+                        del lc_hard
+                        # del lc_det
 
-                        ## Only keep going if the rms is in the right range
-                        if rms < 0.041:
-                            # print("Hardness: %.4f" % hardness)
-                            # lc_nz = make_1Dlightcurve(np.asarray(time_nz), n_bins,
-                            #                           start_time, end_time)
-                            # lc_ibg = make_1Dlightcurve(np.asarray(time_ibg),
-                            #                            n_bins, start_time,
-                            #                            end_time)
-                            # lc_hrej = make_1Dlightcurve(np.asarray(time_hrej),
-                            #                             n_bins, start_time,
-                            #                             end_time)
-                            #
-                            # nz_rate += np.mean(lc_nz)
-                            # ibg_rate += np.mean(lc_ibg)
-                            # hrej_rate += np.mean(lc_hrej)
-                            # del lc_hrej
-                            # del lc_ibg
-                            # del lc_nz
+                        ## Only keep going if the hardness ratio is in the right range
+                        if (hardness >= 0.021 and hardness <= 0.031):
+                        # if hardness > 0.031 and hardness <= 0.05:
+                            ## Computations
+                            qpo_seg = QPO(lc_ref, lc_ci, lc_broad)
+                            del lc_ci
+                            del lc_ref
+                            del lc_broad
 
-                            ## Taking the running sum, for averaging
-                            mean_rate_ref += qpo_seg.rate_ref
-                            psd_ref += qpo_seg.psd_ref
-                            mean_rate_all += qpo_seg.rate_all
-                            psd_all += qpo_seg.psd_all
-                            mean_rate_ci += qpo_seg.rate_ci
-                            psd_ci += qpo_seg.psd_ci
-                            cross += qpo_seg.cs
+                            ## Compute the integrated rms over 3-10 keV (ref band)
+                            ## over 1.5-15 Hz. Compute Poisson noise level from >70 Hz.
+                            temp_psd = np.asarray(qpo_seg.psd_broad)
+                            # print(temp_psd[4:8])
+                            temp_fracrefpsd = temp_psd * 2 * dt / n_bins / \
+                                              (qpo_seg.rate_broad ** 2)
+                            # print(temp_fracrefpsd[4:8])
+                            noise_level = np.mean(temp_fracrefpsd[hf:int(n_bins/2)])
+                            # print("%.3g  %.3g" % (noise_level, 2./qpo_seg.rate_broad))
+                            temp_fracrefpsd -= noise_level
+                            var = np.sum(temp_fracrefpsd[lf:uf]*df)
+                            if var >= 0:
+                                rms = np.sqrt(var)
+                            else:
+                                rms = 99.
+                            # print(rms)
 
-                            # ci_rates = np.concatenate((ci_rates,
-                            #         qpo_seg.rate_ci[:, np.newaxis]), axis=1)
-                            n_seg += 1
+                            ## Only keep going if the rms is in the right range
+                            if rms < 0.05:
+                                # print("Hardness: %.4f" % hardness)
+                                # lc_nz = make_1Dlightcurve(np.asarray(time_nz), n_bins,
+                                #                           start_time, end_time)
+                                # lc_ibg = make_1Dlightcurve(np.asarray(time_ibg),
+                                #                            n_bins, start_time,
+                                #                            end_time)
+                                # lc_hrej = make_1Dlightcurve(np.asarray(time_hrej),
+                                #                             n_bins, start_time,
+                                #                             end_time)
+                                #
+                                # nz_rate += np.mean(lc_nz)
+                                # ibg_rate += np.mean(lc_ibg)
+                                # hrej_rate += np.mean(lc_hrej)
+                                # del lc_hrej
+                                # del lc_ibg
+                                # del lc_nz
 
-                        # else:
-                        #     print("Bad rms: %.4f" % rms)
+                                ## Taking the running sum, for averaging
+                                mean_rate_ref += qpo_seg.rate_ref
+                                psd_ref += qpo_seg.psd_ref
+                                mean_rate_broad += qpo_seg.rate_broad
+                                psd_broad += qpo_seg.psd_broad
+                                mean_rate_seg += np.sum(det_means)
+                                mean_rate_ci += qpo_seg.rate_ci
+                                psd_ci += qpo_seg.psd_ci
+                                cross += qpo_seg.cs
+                                avg_deadtime += np.mean(deadtime_broad)
+                                ci_rates = np.concatenate((ci_rates,
+                                        qpo_seg.rate_ci[:, np.newaxis]), axis=1)
+                                # print(np.shape(np.mean(lc_allmpu, axis=0)))
+                                allmpu_rates = np.concatenate((allmpu_rates,
+                                         np.mean(lc_allmpu, axis=0)[:, np.newaxis]), axis=1)
+                                n_seg += 1
 
-                        del qpo_seg
+                            # else:
+                            #     print("Bad rms: %.4f" % rms)
 
-                    # else:
-                        # print("Bad hardness: %.4f" % hardness)
+                            del qpo_seg
 
+                            # else:
+                                # print("Bad hardness: %.4f" % hardness)
 
                     ## Increment for next segment
                     start_time = end_time
@@ -455,11 +499,13 @@ if __name__ == "__main__":
     print("* Averaging the running sums")
     mean_rate_ref /= n_seg
     psd_ref /= n_seg
-    mean_rate_all /= n_seg
-    psd_all /= n_seg
+    mean_rate_broad /= n_seg
+    mean_rate_seg /= n_seg
+    psd_broad /= n_seg
     mean_rate_ci /= n_seg
     psd_ci /= n_seg
     cross /= n_seg
+    avg_deadtime /= n_seg
 
     # nz_rate /= n_seg
     # ibg_rate /= n_seg
@@ -469,13 +515,19 @@ if __name__ == "__main__":
     ## segment to a file. This is used to compute the standard error on the mean across
     ## segments to get a mean energy spectrum with errors.
     # ci_rates = ci_rates[:,1:]
-    # np.savetxt("./out_xcor/ci_rate_per_seg.txt", ci_rates, fmt="%.6f")
+    # np.savetxt("./out/ci_rate_per_seg.txt", ci_rates, fmt="%.6f")
+    # allmpu_rates = allmpu_rates[:, 1:]
+    # np.savetxt("./out/allmpu_rate_per_seg.txt", allmpu_rates, fmt="%.6f")
+
+    # assert np.allclose(np.sum(allmpu_rates), mean_rate_seg, atol=0.001)
+    print(np.sum(allmpu_rates))
+    print(mean_rate_seg)
 
     print("* Applying absolute rms^2 normalization to the psds")
     # ## NOT subtracting off the Poisson noise
     psd_ref *= (2. * dt / float(n_bins))
     psd_ci *= (2. * dt / float(n_bins))
-    psd_all *= (2. * dt / float(n_bins))
+    psd_broad *= (2. * dt / float(n_bins))
 
     ## Putting everyting into a table
     print("* Putting PSDs and CS into a table")
@@ -483,33 +535,33 @@ if __name__ == "__main__":
     tab.add_column(Column(name="FREQUENCY", data=freq, unit="Hz",
                           dtype='float32', description="Fourier frequency"))
 
-    assert np.isfinite(psd_all).all(), "psd_all has infinite value(s)."
-    assert not np.isnan(psd_all).all(), "psd_all has NaN value(s)."
-    tab.add_column(Column(name="PSD_ALL", data=psd_all, dtype='float64',
+    assert np.isfinite(psd_broad).any(), "psd_broad has infinite value(s)."
+    assert not np.isnan(psd_broad).any(), "psd_broad has NaN value(s)."
+    tab.add_column(Column(name="PSD_BROAD", data=psd_broad, dtype='float64',
                           unit="abs rms^2",
                           description="PSD of all MPUs, 3-10 keV, "\
                                       "w Poiss noise"))
 
     assert len(psd_ref) == n_bins, \
         "Ref power spectrum has wrong array shape: %d" % (len(psd_ref))
-    assert np.isfinite(psd_ref).all(), "psd_ref has infinite value(s)."
-    assert not np.isnan(psd_ref).all(), "psd_ref has NaN value(s)."
+    assert np.isfinite(psd_ref).any(), "psd_ref has infinite value(s)."
+    assert not np.isnan(psd_ref).any(), "psd_ref has NaN value(s)."
     tab.add_column(Column(name="PSD_REF", data=psd_ref, dtype='float64',
                           unit="abs rms^2",
                           description="Ref PSD, w Poiss noise"))
 
     assert np.shape(psd_ci) == (n_bins, n_chans), \
         "CI power spectrum has wrong array shape: %s" % (str(np.shape(psd_ci)))
-    assert np.isfinite(psd_ci).all(), "psd_ci has infinite value(s)."
-    assert not np.isnan(psd_ci).all(), "psd_ci has NaN value(s)."
+    assert np.isfinite(psd_ci).any(), "psd_ci has infinite value(s)."
+    assert not np.isnan(psd_ci).any(), "psd_ci has NaN value(s)."
     tab.add_column(Column(name="PSD_CI", data=psd_ci, dtype='float64',
                           unit="abs rms^2",
                           description="CI PSD, w Poiss noise"))
 
     assert np.shape(cross) == (n_bins, n_chans), \
         "Cross spectrum has wrong array shape: %s" % (str(np.shape(cross)))
-    assert np.isfinite(cross).all(), "cross has infinite value(s)."
-    assert not np.isnan(cross).all(), "cross has NaN value(s)."
+    assert np.isfinite(cross).any(), "cross has infinite value(s)."
+    assert not np.isnan(cross).any(), "cross has NaN value(s)."
     tab.add_column(Column(name="CROSS", data=cross, dtype='complex128',
                           description="CS, unnorm, unfiltered"))
 
@@ -527,13 +579,15 @@ if __name__ == "__main__":
     tab.meta['DF'] = df
     tab.meta['N_CHANS'] = n_chans
     tab.meta['CHBINFIL'] = binning_file
-    # tab.meta['DETFILE'] = detid_bin_file
+    tab.meta['DETFILE'] = detid_bin_file
     tab.meta['N_SEG'] = n_seg
     tab.meta['N_SECOND'] = n_seconds
     tab.meta['NYQUIST'] = 1./(2.*dt)
+    tab.meta['DEADTIME'] = avg_deadtime
     tab.meta['RATE_REF'] = mean_rate_ref
     tab.meta['RATE_CI'] = str(mean_rate_ci.tolist())
-    tab.meta['RATE_ALL'] = mean_rate_all  ## 3-10 keV
+    tab.meta['RATE_BROAD'] = mean_rate_broad  ## 3-10 keV
+    tab.meta['RATE_SEG'] = mean_rate_seg  ## every event in that segment
     # tab.meta['RATE_NZ'] = nz_rate
     # tab.meta['RATE_IBG'] = ibg_rate
     # tab.meta['RATEHREJ'] = hrej_rate
@@ -548,3 +602,5 @@ if __name__ == "__main__":
     warnings.simplefilter('ignore', category=AstropyWarning)
     tab.write(out_file, format='fits', overwrite=True)
     print("Output saved to: %s \n" % out_file)
+
+    os.system('\a')
