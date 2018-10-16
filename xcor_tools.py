@@ -170,21 +170,18 @@ def psd_norm(psd, mean_rate, dt, n_bins, norm="frac", noisy=False):
     return psd
 
 
-def lin_rb(freq, power, mean_rate, n_bins, new_n_bins):
+def lin_rb(freq, power, n_bins, new_n_bins):
     """
 
     :param freq:
     :param power:
-    :param mean_rate:
     :param n_bins:
     :param new_n_bins:
     :return:
     """
     p_freq = np.abs(freq[0:int(n_bins / 2 + 1)])
 
-    n_psd = psd_norm(power[0:int(n_bins / 2 + 1)],
-                           mean_rate, norm="leahy", noisy=False)
-    lin_rb_psd, f_bin_edges, something = binned_statistic(p_freq, n_psd,
+    lin_rb_psd, f_bin_edges, something = binned_statistic(p_freq, power,
                                                           statistic='mean',
                                                           bins=new_n_bins)
     new_df = np.median(np.diff(f_bin_edges))
@@ -425,15 +422,12 @@ class Energy_lags(object):
     abs rms^2 normalized and NOT Poisson-noise-subtracted.
     """
 
-    def __init__(self, in_tab, low_freq_bound=820.,
-                 high_freq_bound=850., debug=False):
-        assert isinstance(low_freq_bound,
-                          float), "`low_freq_bound` should be a float."
-        assert isinstance(high_freq_bound,
-                          float), "`high_freq_bound` should be a float."
+    def __init__(self, in_tab, low_freq_bound=3.,
+                 high_freq_bound=9., debug=False):
+        assert isinstance(low_freq_bound, float), "`low_freq_bound` should be a float."
+        assert isinstance(high_freq_bound, float), "`high_freq_bound` should be a float."
         assert isinstance(debug, bool), "`debug` should be a boolean."
-        assert isinstance(in_tab,
-                          Table), "`in_tab` should be an astropy Table object."
+        assert isinstance(in_tab, Table), "`in_tab` should be an astropy Table object."
         assert low_freq_bound < high_freq_bound, "`low_freq_bound` must be less than `high_freq_bound`."
         self.debug = debug
 
@@ -443,10 +437,9 @@ class Energy_lags(object):
 
         assert len(np.shape(in_tab['PSD_REF'])) == 1
         assert len(np.shape(in_tab['PSD_CI'])) == 2
-        assert len(np.shape(in_tab['UF_CROSS'])) == 2
-        assert len(np.shape(in_tab['F_CROSS'])) == 2
+        assert len(np.shape(in_tab['CROSS'])) == 2
         self.n_bins = in_tab.meta['N_BINS']
-        self.detchans = in_tab.meta['DETCHANS']
+        self.n_chans = in_tab.meta['N_CHANS']
         self.n_seg = in_tab.meta['N_SEG']
         self.dt = in_tab.meta['DT']
         self.rate_ref = in_tab.meta['RATE_REF']
@@ -454,11 +447,10 @@ class Energy_lags(object):
                                   dtype='float')
 
         freq = np.abs(in_tab['FREQUENCY'][0:int(self.n_bins / 2 + 1)])
-        ## Using FCROSS here because we want the **filtered** cross spectrum.
-        cs = in_tab['F_CROSS'][0:int(self.n_bins / 2 + 1), :]
-        ## Then, also using the filtered power spectra.
+        ## Using the unfiltered (but still shifted) cs & psd
+        cs = in_tab['CROSS'][0:int(self.n_bins / 2 + 1), :]
         psd_ci = in_tab['PSD_CI'][0:int(self.n_bins / 2 + 1), :]
-        psd_ref = in_tab['F_PSD_REF'][0:int(self.n_bins / 2 + 1)]
+        psd_ref = in_tab['PSD_REF'][0:int(self.n_bins / 2 + 1)]
 
         a, f_mask_low = find_nearest(freq, low_freq_bound)
         a, f_mask_high = find_nearest(freq, high_freq_bound)
@@ -467,93 +459,42 @@ class Energy_lags(object):
             print("High freq: " + str(freq[f_mask_high]))
 
         f_span = f_mask_high - f_mask_low + 1  ## including both ends
-        #         if self.debug:
-        #             print("Freq in mask: "+str(freq[f_mask_low:f_mask_high+1]))
         mean_f = np.mean(freq[f_mask_low:f_mask_high + 1])
 
         temp_tab = Table()
-        tt_f = np.repeat(mean_f, self.detchans)
+        tt_f = np.repeat(mean_f, self.n_chans)
         temp_tab['FREQUENCY'] = Column(tt_f, dtype=np.float32, unit='Hz')
         tt_cs = np.mean(cs[f_mask_low:f_mask_high + 1, ], axis=0)
         temp_tab['CROSS'] = Column(tt_cs, dtype=np.complex128, unit='---')
         tt_pc = np.mean(psd_ci[f_mask_low:f_mask_high + 1, ], axis=0)
         temp_tab['POWER_CI'] = Column(tt_pc, dtype=np.float64, unit='---')
-        tt_pr = np.repeat(np.mean(psd_ref[f_mask_low:f_mask_high + 1]),
-                          self.detchans)
+        tt_pr = np.repeat(np.mean(psd_ref[f_mask_low:f_mask_high + 1]), self.n_chans)
         temp_tab['POWER_REF'] = Column(tt_pr, dtype=np.float64, unit='---')
         if self.debug:
             print(temp_tab.info)
 
         energy_tab = Table()
-        energy_tab['CHANNEL'] = Column(np.arange(int(self.detchans)),
-                                       description='Detector energy channel',
+        energy_tab['CHANNEL'] = Column(np.arange(int(self.n_chans)),
+                                       description='Energy channel of interest',
                                        dtype=np.int, unit='chan')
-        print(temp_tab['CROSS'][10].imag)
-        print(temp_tab['CROSS'][10].real)
-
-        p_lag = -np.arctan2(temp_tab['CROSS'].imag, temp_tab['CROSS'].real)
-        energy_tab['PHASE_LAG'] = Column(p_lag, unit='rad',
-                                         description='Phase lag',
+        energy_tab['PHASE_LAG'] = Column(-np.arctan2(temp_tab['CROSS'].imag,
+                                                     temp_tab['CROSS'].real),
+                                         unit='rad', description='Phase lag',
                                          dtype=np.float64)
-        p_err = self._phase_err(temp_tab, f_span)
-        energy_tab['PHASE_ERR'] = Column(p_err, unit='rad', dtype=np.float64,
+        energy_tab['PHASE_ERR'] = Column(self._phase_err(temp_tab, f_span),
+                                         unit='rad', dtype=np.float64,
                                          description='Error on phase lag')
-        t_lag = self._phase_to_tlags(energy_tab['PHASE_LAG'],
-                                     temp_tab['FREQUENCY'])
-        energy_tab['TIME_LAG'] = Column(t_lag, unit='s', dtype=np.float64,
-                                        description='Time lag')
-        t_err = self._phase_to_tlags(energy_tab['PHASE_ERR'],
-                                     temp_tab['FREQUENCY'])
-        energy_tab['TIME_ERR'] = Column(t_err, unit='s', dtype=np.float64,
-                                        description='Error on time lag')
+        energy_tab['TIME_LAG'] = Column(self._phase_to_tlags(energy_tab['PHASE_LAG'],
+                                                             temp_tab['FREQUENCY']),
+                                        unit='s', dtype=np.float64, description='Time lag')
+        energy_tab['TIME_ERR'] = Column(self._phase_to_tlags(energy_tab['PHASE_ERR'],
+                                                             temp_tab['FREQUENCY']),
+                                        unit='s', dtype=np.float64, description='Error on time lag')
 
         if self.debug:
             print(energy_tab.info)
 
         self.energy_tab = energy_tab
-
-        ## Also computing for the unfiltered (but still shifted) cross spectrum
-        cs = in_tab['UF_CROSS'][0:int(self.n_bins / 2 + 1), :]
-        psd_ci = in_tab['PSD_CI'][0:int(self.n_bins / 2 + 1), :]
-        psd_ref = in_tab['PSD_REF'][0:int(self.n_bins / 2 + 1)]
-
-        temp_tab = Table()
-        tt_f = np.repeat(mean_f, self.detchans)
-        temp_tab['FREQUENCY'] = Column(tt_f, dtype=np.float32, unit='Hz')
-        tt_cs = np.mean(cs[f_mask_low:f_mask_high + 1, ], axis=0)
-        temp_tab['CROSS'] = Column(tt_cs, dtype=np.complex128, unit='---')
-        tt_pc = np.mean(psd_ci[f_mask_low:f_mask_high + 1, ], axis=0)
-        temp_tab['POWER_CI'] = Column(tt_pc, dtype=np.float64, unit='---')
-        tt_pr = np.repeat(np.mean(psd_ref[f_mask_low:f_mask_high + 1]),
-                          self.detchans)
-        temp_tab['POWER_REF'] = Column(tt_pr, dtype=np.float64, unit='---')
-        if self.debug:
-            print(temp_tab.info)
-
-        uf_energy_tab = Table()
-        uf_energy_tab['CHANNEL'] = Column(np.arange(int(self.detchans)),
-                                          description='Detector energy channel',
-                                          dtype=np.int, unit='chan')
-        uf_energy_tab['PHASE_LAG'] = Column(-np.arctan2(temp_tab['CROSS'].imag,
-                                                        temp_tab['CROSS'].real),
-                                            unit='rad', description='Phase lag',
-                                            dtype=np.float64)
-        uf_energy_tab['PHASE_ERR'] = Column(self._phase_err(temp_tab, f_span),
-                                            unit='rad', dtype=np.float64,
-                                            description='Error on phase lag')
-        uf_energy_tab['TIME_LAG'] = Column(
-            self._phase_to_tlags(uf_energy_tab['PHASE_LAG'],
-                                 temp_tab['FREQUENCY']),
-            unit='s', dtype=np.float64, description='Time lag')
-        uf_energy_tab['TIME_ERR'] = Column(
-            self._phase_to_tlags(uf_energy_tab['PHASE_ERR'],
-                                 temp_tab['FREQUENCY']),
-            unit='s', dtype=np.float64, description='Error on time lag')
-
-        if self.debug:
-            print(uf_energy_tab.info)
-
-        self.uf_energy_tab = uf_energy_tab
 
     def _phase_err(self, tab, n_range=1):
         """
@@ -575,10 +516,9 @@ class Energy_lags(object):
         phase_err : np.array of floats
             1-D array of the error on the phase of the lag.
         """
-        if self.debug:
-            print("Phase err")
+        #         if self.debug:
+        #             print("Phase err")
         coherence = self._comp_coherence(tab, n_range)
-        #         print("Shape coh:"+str(np.shape(coherence)))
         coherence[coherence == 0] = 1e-14
         phase_err = np.sqrt(np.abs(1 - coherence) / \
                             (2 * coherence * n_range * self.n_seg))
@@ -589,11 +529,9 @@ class Energy_lags(object):
         Convert a complex-plane cross-spectrum phase (in radians) to a time lag
         (in seconds).
         """
-        if self.debug:
-            print("Phase to time lags")
+        #         if self.debug:
+        #             print("Phase to time lags")
         f[f == 0] = 1e-14
-        #         print("Shape phase: "+str(np.shape(phase)))
-        #         print("Shape f: "+str(np.shape(f)))
         tlags = phase / (2.0 * np.pi * f)
         return tlags
 
@@ -613,22 +551,20 @@ class Energy_lags(object):
         -------
         coherence : np.array of floats
             The raw coherence of the cross spectrum. (Uttley et al 2014, eqn 11)
-            Size = detchans.
+            Size = n_chans.
         """
-        if self.debug:
-            print("Compute coherence")
-            print("nrange: " + str(n_range))
-        # cs_bias = self._bias_term(tab, n_range)
+        #         if self.debug:
+        #             print("Compute coherence")
+        #             print("nrange: "+str(n_range))
+        #         cs_bias = self._bias_term(tab, n_range)
         ## Setting bias to 0 since i'm using filtered cs and psds for the computations.
         cs_bias = 0  ## Reasonable assumption, most of the time.
         if self.debug:
             print("WARNING: Assuming bias term for coherence is 0.")
-        temp_2 = (np.abs(tab['CROSS']) * (
-        2 * self.dt / self.n_bins)) ** 2 - cs_bias
+        temp_2 = (np.abs(tab['CROSS']) * (2 * self.dt / self.n_bins)) ** 2 - cs_bias
         powers = tab['POWER_CI'] * tab['POWER_REF']
         powers[powers == 0] = 1e-14
         coherence = temp_2 / powers
-        #         print(coherence)
         return np.real(coherence)
 
     def _bias_term(self, tab, n_range):
@@ -673,7 +609,5 @@ class Energy_lags(object):
         temp_b = (tab['POWER_CI'] - Pnoise_ci) * Pnoise_ref
         temp_c = Pnoise_ref * Pnoise_ci
 
-        n_squared = np.asarray(
-            (temp_a + temp_b + temp_c) / (n_range * self.n_seg))
-        # print(n_squared)
+        n_squared = np.asarray((temp_a + temp_b + temp_c) / (n_range * self.n_seg))
         return n_squared
