@@ -16,3 +16,4 @@ nicer-lfqpo_arxiv/*
 *.xcm
 *.log
 out/old/*
+*debug_*
